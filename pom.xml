@@ -21,6 +21,15 @@
         <url>https://github.com/jfodev/ovunix-dev-tools.git/tree/main</url>
     </scm>
 
+    <developers>
+        <developer>
+            <id>jfodev</id>
+            <name>JFO Okemba</name> <!-- Nom du développeur -->
+            <email>jfodev@gmail.com</email> <!-- Email du développeur -->
+        </developer>
+    </developers>
+    <url>https://github.com/ovunix/ovunix-dev-tools</url>
+    <description>Tools dev pour des applications spring boot.</description>
     <build>
         <plugins>
             <plugin>

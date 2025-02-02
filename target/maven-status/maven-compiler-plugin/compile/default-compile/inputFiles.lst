@@ -16,9 +16,11 @@
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/enums/StatutUser.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/utils/UniqueNumberGenerator.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/repository/AbstractRepository.java
+/home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/dto/CountDto.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/contract/AbstractController.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/dto/RequestFilter.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/service/AbstractService.java
+/home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/utils/Tools.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/dto/AbstractDto.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/exceptions/OvunixException.java
 /home/yavi/Bureau/force-one/ovunix/ovunix-dev-tools/src/main/java/com/ovunix/dto/validation/ValidationRule.java

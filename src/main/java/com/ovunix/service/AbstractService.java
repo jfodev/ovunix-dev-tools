@@ -2,6 +2,7 @@ package com.ovunix.service;
 
 import com.ovunix.domain.AbstractEntity;
 import com.ovunix.dto.AbstractDto;
+import com.ovunix.dto.CountDto;
 import com.ovunix.dto.RequestFilter;
 import com.ovunix.dto.SearchCriteria;
 import com.ovunix.dto.validation.ValidationRule;
@@ -9,7 +10,6 @@ import com.ovunix.enums.SearchOperation;
 import com.ovunix.exceptions.OvunixException;
 import com.ovunix.mappers.AbstractMappers;
 import com.ovunix.repository.AbstractRepository;
-import com.ovunix.utils.UniqueNumberGenerator;
 import com.ovunix.validators.Validator;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,7 +19,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 
-
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +27,7 @@ import java.util.Optional;
 
 public abstract class AbstractService<T extends AbstractDto, ID extends Serializable> implements IAbstractService<T, ID> {
 
+    private static final int NB_NO_PAGINATION=1_000_000_000;
     private static final int MAX_TOTAL_ITEM=0;
     public abstract AbstractRepository abstractRepository();
 
@@ -56,7 +56,7 @@ public abstract class AbstractService<T extends AbstractDto, ID extends Serializ
 
         AbstractEntity abstractEntity = this.abstractMappers().toEntity(t);
         generatorStrategy.generate(abstractEntity);
-        if (businessStrategy != null) businessStrategy.treat(abstractEntity);
+        if (businessStrategy != null) businessStrategy.treat(abstractEntity,t);
         this.abstractRepository().save(abstractEntity);
         return (T) this.abstractMappers().toDto(abstractEntity);
     }
@@ -167,7 +167,7 @@ public abstract class AbstractService<T extends AbstractDto, ID extends Serializ
         Page<AbstractEntity> items= abstractRepository().findAll(specification, pageable);
         if (items.getTotalPages()>MAX_TOTAL_ITEM){
           for (AbstractEntity item:items.getContent()){
-              dtos.add((T) this.abstractMappers().toDto(item));
+              dtos.add((T) determineMapping(item));
           }
         }
         return dtos;
@@ -194,6 +194,47 @@ public abstract class AbstractService<T extends AbstractDto, ID extends Serializ
     @Override
     public void setBusinessStrategy(BusinessStrategy businessStrategy) {
         this.businessStrategy = businessStrategy;
+    }
+
+
+    protected AbstractDto determineMapping (AbstractEntity abstractEntity){
+      return  this.abstractMappers().toDto(abstractEntity);
+    }
+
+
+    @Override
+    public CountDto countWithFilters(RequestFilter filter) {
+        filter.setPage(0);
+        filter.setSize(NB_NO_PAGINATION);
+        List <T>  lst=this.searchWithFilters(filter);
+        CountDto countDto=new CountDto();
+        countDto.setTotal(lst.size());
+        return countDto;
+    }
+
+
+    @Override
+    public T update(T t) {
+        List<String> errors = new ArrayList<>();
+        if (validator != null) {
+            for (ValidationRule rule : this.validator.getValidationRules()) {
+                if (!rule.isEnCreation()){
+                    continue;
+                }
+                if (rule.getCondition().test(t)) {
+                    errors.add(rule.getErrorMessage());
+                }
+            }
+            if (!errors.isEmpty()) {
+                throw new OvunixException(errors);
+            }
+        }
+
+        AbstractEntity abstractEntity = this.abstractMappers().toEntity(t);
+        generatorStrategy.generate(abstractEntity);
+        if (businessStrategy != null) businessStrategy.treat(abstractEntity,t);
+        this.abstractRepository().save(abstractEntity);
+        return (T) this.abstractMappers().toDto(abstractEntity);
     }
 
 }

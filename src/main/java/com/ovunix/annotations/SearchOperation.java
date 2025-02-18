@@ -1,4 +1,4 @@
-package com.ovunix.enums;
+package com.ovunix.annotations;
 
 public enum SearchOperation {
     EQUAL,

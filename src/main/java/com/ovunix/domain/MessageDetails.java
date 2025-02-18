@@ -1,6 +1,6 @@
 package com.ovunix.domain;
 
-import com.ovunix.enums.Lang;
+import com.ovunix.annotations.Lang;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;

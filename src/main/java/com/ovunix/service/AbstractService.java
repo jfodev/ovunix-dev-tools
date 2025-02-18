@@ -6,7 +6,7 @@ import com.ovunix.dto.CountDto;
 import com.ovunix.dto.RequestFilter;
 import com.ovunix.dto.SearchCriteria;
 import com.ovunix.dto.validation.ValidationRule;
-import com.ovunix.enums.SearchOperation;
+import com.ovunix.annotations.SearchOperation;
 import com.ovunix.exceptions.OvunixException;
 import com.ovunix.mappers.AbstractMappers;
 import com.ovunix.repository.AbstractRepository;
@@ -18,13 +18,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
-
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Transactional;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-
-
+import com.ovunix.exceptions.OvunixException;
+@Transactional(rollbackFor = {OvunixException.class,Exception.class})
 public abstract class AbstractService<T extends AbstractDto, ID extends Serializable> implements IAbstractService<T, ID> {
 
     private static final int NB_NO_PAGINATION=1_000_000_000;

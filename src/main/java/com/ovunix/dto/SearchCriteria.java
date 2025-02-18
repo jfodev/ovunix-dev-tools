@@ -1,6 +1,6 @@
 package com.ovunix.dto;
 
-import com.ovunix.enums.SearchOperation;
+import com.ovunix.annotations.SearchOperation;
 import lombok.Data;
 
 @Data

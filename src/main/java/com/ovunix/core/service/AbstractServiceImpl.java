@@ -66,13 +66,13 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
     }
 
 
-    private void validate(T dto, boolean isCreation) {
+    private void validate(T dto) {
         Validator<T> validator = getValidator((Class<T>) dto.getClass());
         if (validator == null) return;
 
         List<String> errors = new ArrayList<>();
         for (ValidationRule rule : validator.getValidationRules()) {
-            if (rule.isEnCreation() == isCreation && rule.getCondition().test(dto)) {
+            if ( rule.getCondition().test(dto)) {
                 errors.add(rule.getErrorMessage());
             }
         }
@@ -80,9 +80,9 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
     }
 
     private T persist(T dto) {
+        this.validate(dto);
         Persistable entity = abstractMappers().toEntity(dto);
         generatorStrategy.generate(entity);
-
         BusinessStrategy strategy = getStrategy((Class<T>) dto.getClass());
         if (strategy != null) {
             strategy.treat(entity, dto);

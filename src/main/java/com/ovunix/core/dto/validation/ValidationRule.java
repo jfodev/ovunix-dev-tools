@@ -15,7 +15,7 @@ public class ValidationRule <T extends AbstractDto>{
 
     private Predicate<T> condition;
     private String errorMessage;
-    private boolean enCreation=false;
+    private boolean enCreation=true;
 
 
 }

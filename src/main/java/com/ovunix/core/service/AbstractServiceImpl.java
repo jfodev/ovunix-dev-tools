@@ -103,6 +103,7 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
     }
 
     private T persist(T dto, boolean isCreation) {
+        this.validate(dto);
         Persistable entity = abstractMappers().toEntity(dto);
         generatorStrategy.generate(entity);
 

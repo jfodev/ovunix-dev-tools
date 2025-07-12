@@ -10,11 +10,9 @@ import com.ovunix.core.repository.AbstractRepository;
 import com.ovunix.core.strategy.BusinessStrategy;
 import com.ovunix.core.strategy.IdGeneratorStrategy;
 import com.ovunix.core.validators.Validator;
+import jakarta.persistence.Entity;
 import jakarta.persistence.OptimisticLockException;
-import jakarta.persistence.criteria.From;
-import jakarta.persistence.criteria.JoinType;
-import jakarta.persistence.criteria.Path;
-import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -22,24 +20,21 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.BiFunction;
 
 @Transactional(rollbackFor = {OvunixException.class, Exception.class})
 public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Serializable> implements IAbstractService<T, ID> {
 
-    private static final int MAX_TOTAL_ITEM = 0;
-
     @Autowired
     protected IdGeneratorStrategy generatorStrategy;
 
     protected BusinessStrategy businessStrategy;
 
-
     public abstract AbstractRepository abstractRepository();
 
     public abstract AbstractMappers abstractMappers();
-
 
     private final Map<String, Validator<?>> validators;
     private final Map<String, BusinessStrategy<?, ?>> strategies;
@@ -54,7 +49,6 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         this.generatorStrategy = generatorStrategy;
     }
 
-
     protected Validator<T> getValidator(Class<T> dtoClass) {
         String key = dtoClass.getSimpleName().replace("Dto", "").toLowerCase() + "Validator";
         return (Validator<T>) validators.get(key);
@@ -65,14 +59,13 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         return strategies.get(key);
     }
 
-
     private void validate(T dto) {
         Validator<T> validator = getValidator((Class<T>) dto.getClass());
         if (validator == null) return;
 
         List<String> errors = new ArrayList<>();
         for (ValidationRule rule : validator.getValidationRules()) {
-            if ( rule.getCondition().test(dto)) {
+            if (rule.getCondition().test(dto)) {
                 errors.add(rule.getErrorMessage());
             }
         }
@@ -103,7 +96,6 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
     }
 
     private T persist(T dto, boolean isCreation) {
-        this.validate(dto);
         Persistable entity = abstractMappers().toEntity(dto);
         generatorStrategy.generate(entity);
 
@@ -159,34 +151,14 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 .toList();
     }
 
-    /**
-     * Construit dynamiquement une spécification JPA (de type {@link Specification}) à partir des critères
-     * de filtrage fournis dans un objet {@link RequestFilter}. Cette spécification peut ensuite être utilisée
-     * avec Spring Data JPA pour appliquer des requêtes dynamiques complexes, combinant des conditions
-     * « ET » (AND) et « OU » (OR).
-     * <p>
-     * Les conditions AND sont évaluées en priorité, et les conditions OR sont regroupées entre elles.
-     * Cela permet des requêtes du type :
-     * <pre>{@code
-     *     WHERE statut = 'ACTIF' AND (nom LIKE '%Jean%' OR prenom LIKE '%Jean%')
-     * }</pre>
-     *
-     * @param filter un objet {@link RequestFilter} contenant les critères à appliquer :
-     *               - {@code andCriterias} : liste des critères à combiner avec AND
-     *               - {@code orCriterias} : liste des critères à combiner avec OR
-     * @return une spécification JPA à passer à une méthode Spring Data JPA telle que {@code findAll(specification)} ou {@code count(specification)}
-     * @throws IllegalArgumentException si une clé de critère ne peut pas être résolue ou si une opération est invalide
-     */
     protected Specification<Persistable> buildSpecification(RequestFilter filter) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> andPredicates = new ArrayList<>();
             List<Predicate> orPredicates = new ArrayList<>();
 
-            // Fonction utilitaire pour convertir un SearchCriteria en Predicate
             BiFunction<Criteria, Path<?>, Predicate> toPredicate = (criteria, path) -> {
                 Object value = criteria.value();
                 Operation operation = criteria.operation();
-                Class<?> fieldType = path.getJavaType();
 
                 return switch (operation) {
                     case EQUAL -> criteriaBuilder.equal(path, value);
@@ -203,13 +175,11 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 };
             };
 
-            // Traitement des AND
             for (Criteria criteria : filter.getAndCriterias()) {
                 Path<?> path = resolvePath(root, criteria.key());
                 andPredicates.add(toPredicate.apply(criteria, path));
             }
 
-            // Traitement des OR
             for (Criteria criteria : filter.getOrCriterias()) {
                 Path<?> path = resolvePath(root, criteria.key());
                 orPredicates.add(toPredicate.apply(criteria, path));
@@ -222,6 +192,49 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         };
     }
 
+    private Path<?> resolvePath(From<?, ?> root, String key) {
+        String[] parts = key.split("\\.");
+        Path<?> path = root;
+
+        for (int i = 0; i < parts.length; i++) {
+            String part = parts[i];
+            boolean isLast = (i == parts.length - 1);
+
+            if (path instanceof From<?, ?> fromPath) {
+                Class<?> fieldType = getFieldType(fromPath.getJavaType(), part);
+                if (!isLast && isEntity(fieldType)) {
+                    path = getOrCreateJoin(fromPath, part);
+                } else {
+                    path = fromPath.get(part);
+                }
+            } else {
+                path = path.get(part);
+            }
+        }
+
+        return path;
+    }
+
+    private boolean isEntity(Class<?> type) {
+        return type != null && type.isAnnotationPresent(Entity.class);
+    }
+
+    private Class<?> getFieldType(Class<?> clazz, String fieldName) {
+        try {
+            Field field = clazz.getDeclaredField(fieldName);
+            return field.getType();
+        } catch (NoSuchFieldException e) {
+            return null;
+        }
+    }
+
+    private Join<?, ?> getOrCreateJoin(From<?, ?> from, String attributeName) {
+        return from.getJoins().stream()
+                .filter(j -> j.getAttribute().getName().equals(attributeName))
+                .findFirst()
+                .orElseGet(() -> from.join(attributeName, JoinType.LEFT));
+    }
+
     @Override
     public CountDto count(RequestFilter filter) {
         Specification<Persistable> specification = buildSpecification(filter);
@@ -229,52 +242,18 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         return new CountDto((int) total);
     }
 
-private Path<?> resolvePath(From<?, ?> root, String key) {
-    String[] parts = key.split("\\.");
-    From<?, ?> currentFrom = root;
-    Path<?> path = root;
-
-    for (int i = 0; i < parts.length; i++) {
-        String part = parts[i];
-        boolean isLast = (i == parts.length - 1);
-
-        if (path instanceof From<?, ?> from) {
-            Class<?> attrType = getAttributeType(from, part);
-
-            // Cas 1 : c’est une entité → join sauf si c’est le dernier
-            if (!isLast && isEntity(attrType)) {
-                path = getOrCreateJoin(from, part);
-                currentFrom = (From<?, ?>) path;
-            }
-            // Cas 2 : c’est un @Embeddable ou champ simple → juste get()
-            else {
-                path = from.get(part);
-            }
-        } else {
-            path = path.get(part);
-        }
+    @Override
+    public CountDto count() {
+        long total = abstractRepository().count();
+        return new CountDto((int) total);
     }
-
-    return path;
-}
-
 
     @Override
     public void setBusinessStrategy(BusinessStrategy strategy) {
         this.businessStrategy = strategy;
     }
 
-    private boolean isComparable(Class<?> type) {
-        return Comparable.class.isAssignableFrom(type);
-    }
-
-    protected AbstractDto determineMapping (Persistable abstractEntity){
-        return  this.abstractMappers().toDto(abstractEntity);
-    }
-
-    @Override
-    public CountDto count() {
-        long total = abstractRepository().count();
-        return new CountDto((int) total);
+    protected AbstractDto determineMapping(Persistable abstractEntity) {
+        return this.abstractMappers().toDto(abstractEntity);
     }
 }

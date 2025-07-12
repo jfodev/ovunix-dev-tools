@@ -229,14 +229,35 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         return new CountDto((int) total);
     }
 
-    private Path<?> resolvePath(From<?, ?> root, String key) {
-        String[] parts = key.split("\\.");
-        Path<?> path = root;
-        for (int i = 0; i < parts.length - 1; i++) {
-            path = ((From<?, ?>) path).join(parts[i], JoinType.LEFT);
+private Path<?> resolvePath(From<?, ?> root, String key) {
+    String[] parts = key.split("\\.");
+    From<?, ?> currentFrom = root;
+    Path<?> path = root;
+
+    for (int i = 0; i < parts.length; i++) {
+        String part = parts[i];
+        boolean isLast = (i == parts.length - 1);
+
+        if (path instanceof From<?, ?> from) {
+            Class<?> attrType = getAttributeType(from, part);
+
+            // Cas 1 : c’est une entité → join sauf si c’est le dernier
+            if (!isLast && isEntity(attrType)) {
+                path = getOrCreateJoin(from, part);
+                currentFrom = (From<?, ?>) path;
+            }
+            // Cas 2 : c’est un @Embeddable ou champ simple → juste get()
+            else {
+                path = from.get(part);
+            }
+        } else {
+            path = path.get(part);
         }
-        return path.get(parts[parts.length - 1]);
     }
+
+    return path;
+}
+
 
     @Override
     public void setBusinessStrategy(BusinessStrategy strategy) {

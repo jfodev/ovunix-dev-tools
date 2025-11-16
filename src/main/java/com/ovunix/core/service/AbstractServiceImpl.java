@@ -160,17 +160,60 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 Object value = criteria.value();
                 Operation operation = criteria.operation();
 
+                boolean isStringPath = String.class.equals(path.getJavaType());
+                String lowerVal = value != null ? value.toString().toLowerCase() : null;
+                String pattern = value != null ? "%" + value.toString() + "%" : null;
+                String lowerPattern = lowerVal != null ? "%" + lowerVal + "%" : null;
+
                 return switch (operation) {
-                    case EQUAL -> criteriaBuilder.equal(path, value);
-                    case NOT_EQUAL -> criteriaBuilder.notEqual(path, value);
-                    case LIKE -> criteriaBuilder.like(path.as(String.class), "%" + value + "%");
-                    case GREATER_THAN -> criteriaBuilder.greaterThan(path.as(Comparable.class), (Comparable) value);
-                    case LESS_THAN -> criteriaBuilder.lessThan(path.as(Comparable.class), (Comparable) value);
-                    case GREATER_THAN_OR_EQUAL -> criteriaBuilder.greaterThanOrEqualTo(path.as(Comparable.class), (Comparable) value);
-                    case LESS_THAN_OR_EQUAL -> criteriaBuilder.lessThanOrEqualTo(path.as(Comparable.class), (Comparable) value);
+                    case EQUAL ->
+                            isStringPath && lowerVal != null
+                                    ? criteriaBuilder.equal(
+                                    criteriaBuilder.lower(path.as(String.class)),
+                                    lowerVal
+                            )
+                                    : criteriaBuilder.equal(path, value);
+
+                    case NOT_EQUAL ->
+                            isStringPath && lowerVal != null
+                                    ? criteriaBuilder.notEqual(
+                                    criteriaBuilder.lower(path.as(String.class)),
+                                    lowerVal
+                            )
+                                    : criteriaBuilder.notEqual(path, value);
+
+                    case LIKE ->
+                            isStringPath && lowerPattern != null
+                                    ? criteriaBuilder.like(
+                                    criteriaBuilder.lower(path.as(String.class)),
+                                    lowerPattern
+                            )
+                                    : criteriaBuilder.like(
+                                    path.as(String.class),
+                                    pattern
+                            );
+
+                    case GREATER_THAN ->
+                            criteriaBuilder.greaterThan(path.as(Comparable.class), (Comparable) value);
+
+                    case LESS_THAN ->
+                            criteriaBuilder.lessThan(path.as(Comparable.class), (Comparable) value);
+
+                    case GREATER_THAN_OR_EQUAL ->
+                            criteriaBuilder.greaterThanOrEqualTo(path.as(Comparable.class), (Comparable) value);
+
+                    case LESS_THAN_OR_EQUAL ->
+                            criteriaBuilder.lessThanOrEqualTo(path.as(Comparable.class), (Comparable) value);
+
                     case IN -> path.in((List<?>) value);
+
                     case NOT_IN -> criteriaBuilder.not(path.in((List<?>) value));
-                    case BLANK -> criteriaBuilder.or(criteriaBuilder.isNull(path), criteriaBuilder.equal(path, ""));
+
+                    case BLANK -> criteriaBuilder.or(
+                            criteriaBuilder.isNull(path),
+                            criteriaBuilder.equal(path, "")
+                    );
+
                     default -> throw new IllegalArgumentException("Unsupported operation: " + operation);
                 };
             };
@@ -185,8 +228,13 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 orPredicates.add(toPredicate.apply(criteria, path));
             }
 
-            Predicate andPredicate = andPredicates.isEmpty() ? criteriaBuilder.conjunction() : criteriaBuilder.and(andPredicates.toArray(new Predicate[0]));
-            Predicate orPredicate = orPredicates.isEmpty() ? criteriaBuilder.conjunction() : criteriaBuilder.or(orPredicates.toArray(new Predicate[0]));
+            Predicate andPredicate = andPredicates.isEmpty()
+                    ? criteriaBuilder.conjunction()
+                    : criteriaBuilder.and(andPredicates.toArray(new Predicate[0]));
+
+            Predicate orPredicate = orPredicates.isEmpty()
+                    ? criteriaBuilder.conjunction()
+                    : criteriaBuilder.or(orPredicates.toArray(new Predicate[0]));
 
             return criteriaBuilder.and(andPredicate, orPredicate);
         };

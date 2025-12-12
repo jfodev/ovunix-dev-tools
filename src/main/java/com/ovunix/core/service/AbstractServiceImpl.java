@@ -21,6 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.function.BiFunction;
 
@@ -166,32 +169,29 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 String lowerPattern = lowerVal != null ? "%" + lowerVal + "%" : null;
 
                 return switch (operation) {
-                    case EQUAL ->
-                            isStringPath && lowerVal != null
-                                    ? criteriaBuilder.equal(
-                                    criteriaBuilder.lower(path.as(String.class)),
-                                    lowerVal
-                            )
-                                    : criteriaBuilder.equal(path, value);
+                    case EQUAL -> isStringPath && lowerVal != null
+                            ? criteriaBuilder.equal(
+                            criteriaBuilder.lower(path.as(String.class)),
+                            lowerVal
+                    )
+                            : criteriaBuilder.equal(path, value);
 
-                    case NOT_EQUAL ->
-                            isStringPath && lowerVal != null
-                                    ? criteriaBuilder.notEqual(
-                                    criteriaBuilder.lower(path.as(String.class)),
-                                    lowerVal
-                            )
-                                    : criteriaBuilder.notEqual(path, value);
+                    case NOT_EQUAL -> isStringPath && lowerVal != null
+                            ? criteriaBuilder.notEqual(
+                            criteriaBuilder.lower(path.as(String.class)),
+                            lowerVal
+                    )
+                            : criteriaBuilder.notEqual(path, value);
 
-                    case LIKE ->
-                            isStringPath && lowerPattern != null
-                                    ? criteriaBuilder.like(
-                                    criteriaBuilder.lower(path.as(String.class)),
-                                    lowerPattern
-                            )
-                                    : criteriaBuilder.like(
-                                    path.as(String.class),
-                                    pattern
-                            );
+                    case LIKE -> isStringPath && lowerPattern != null
+                            ? criteriaBuilder.like(
+                            criteriaBuilder.lower(path.as(String.class)),
+                            lowerPattern
+                    )
+                            : criteriaBuilder.like(
+                            path.as(String.class),
+                            pattern
+                    );
 
                     case GREATER_THAN ->
                             criteriaBuilder.greaterThan(path.as(Comparable.class), (Comparable) value);
@@ -228,6 +228,13 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
                 orPredicates.add(toPredicate.apply(criteria, path));
             }
 
+            // 🔹 Filtre temporel générique (date ou datetime) si présent
+            TemporalFilterDto temporalFilter = filter.getTemporalFilter();
+            if (temporalFilter != null) {
+                Predicate temporalPredicate = buildTemporalPredicate(root, criteriaBuilder, temporalFilter);
+                andPredicates.add(temporalPredicate);
+            }
+
             Predicate andPredicate = andPredicates.isEmpty()
                     ? criteriaBuilder.conjunction()
                     : criteriaBuilder.and(andPredicates.toArray(new Predicate[0]));
@@ -239,6 +246,7 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
             return criteriaBuilder.and(andPredicate, orPredicate);
         };
     }
+
 
     private Path<?> resolvePath(From<?, ?> root, String key) {
         String[] parts = key.split("\\.");
@@ -304,4 +312,118 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
     protected AbstractDto determineMapping(Persistable abstractEntity) {
         return this.abstractMappers().toDto(abstractEntity);
     }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Predicate buildTemporalPredicate(
+            Root<? extends Persistable> root,
+            CriteriaBuilder cb,
+            TemporalFilterDto filter
+    ) {
+        if (filter == null || filter.getField() == null || filter.getMode() == null) {
+            return cb.conjunction(); // "true", n'ajoute rien au WHERE
+        }
+
+        Path<?> path = resolvePath(root, filter.getField());
+        Class<?> javaType = path.getJavaType();
+
+        return switch (filter.getMode()) {
+            case DATE_ONLY -> buildDateOnlyPredicate(path, javaType, filter, cb);
+            case DATE_TIME -> buildDateTimePredicate(path, javaType, filter, cb);
+        };
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Predicate buildDateOnlyPredicate(
+            Path<?> path,
+            Class<?> javaType,
+            TemporalFilterDto filter,
+            CriteriaBuilder cb
+    ) {
+        LocalDate from = filter.getFromDate();
+        LocalDate to = filter.getToDate();
+
+        if (from == null && to == null) {
+            return cb.conjunction();
+        }
+
+        if (LocalDate.class.equals(javaType)) {
+
+            Path<LocalDate> p = (Path<LocalDate>) path;
+
+            if (from != null && to != null) {
+                return cb.between(p, from, to);
+            } else if (from != null) {
+                return cb.greaterThanOrEqualTo(p, from);
+            } else {
+                return cb.lessThanOrEqualTo(p, to);
+            }
+
+        } else if (LocalDateTime.class.equals(javaType)) {
+
+            Path<LocalDateTime> p = (Path<LocalDateTime>) path;
+
+            LocalDateTime fromDt = (from != null) ? from.atStartOfDay() : null;
+            LocalDateTime toDt = (to != null) ? to.atTime(LocalTime.MAX) : null;
+
+            if (fromDt != null && toDt != null) {
+                return cb.between(p, fromDt, toDt);
+            } else if (fromDt != null) {
+                return cb.greaterThanOrEqualTo(p, fromDt);
+            } else {
+                return cb.lessThanOrEqualTo(p, toDt);
+            }
+        }
+
+        // Type non géré → pas de filtre
+        return cb.conjunction();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Predicate buildDateTimePredicate(
+            Path<?> path,
+            Class<?> javaType,
+            TemporalFilterDto filter,
+            CriteriaBuilder cb
+    ) {
+        LocalDateTime from = filter.getFromDateTime();
+        LocalDateTime to = filter.getToDateTime();
+
+        if (from == null && to == null) {
+            return cb.conjunction();
+        }
+
+        if (LocalDateTime.class.equals(javaType)) {
+
+            Path<LocalDateTime> p = (Path<LocalDateTime>) path;
+
+            if (from != null && to != null) {
+                return cb.between(p, from, to);
+            } else if (from != null) {
+                return cb.greaterThanOrEqualTo(p, from);
+            } else {
+                return cb.lessThanOrEqualTo(p, to);
+            }
+
+        } else if (LocalDate.class.equals(javaType)) {
+
+            Path<LocalDate> p = (Path<LocalDate>) path;
+
+            LocalDate fromDate = (from != null) ? from.toLocalDate() : null;
+            LocalDate toDate = (to != null) ? to.toLocalDate() : null;
+
+            if (fromDate != null && toDate != null) {
+                return cb.between(p, fromDate, toDate);
+            } else if (fromDate != null) {
+                return cb.greaterThanOrEqualTo(p, fromDate);
+            } else {
+                return cb.lessThanOrEqualTo(p, toDate);
+            }
+        }
+
+        return cb.conjunction();
+    }
+
+
+
+
 }

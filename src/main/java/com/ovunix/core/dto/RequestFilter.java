@@ -10,10 +10,14 @@ public class RequestFilter {
 
     private List<Criteria> andCriterias = new ArrayList<>();
     private List<Criteria> orCriterias = new ArrayList<>();
+    private TemporalFilterDto temporalFilter;
 
     private int page;
     private int size;
     private boolean sortAsc;
     private String sortBy;
+
+
+
 
 }

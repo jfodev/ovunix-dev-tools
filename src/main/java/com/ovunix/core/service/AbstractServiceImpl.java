@@ -313,23 +313,89 @@ public abstract class AbstractServiceImpl<T extends AbstractDto, ID extends Seri
         return this.abstractMappers().toDto(abstractEntity);
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
     private Predicate buildTemporalPredicate(
             Root<? extends Persistable> root,
             CriteriaBuilder cb,
             TemporalFilterDto filter
     ) {
         if (filter == null || filter.getField() == null || filter.getMode() == null) {
-            return cb.conjunction(); // "true", n'ajoute rien au WHERE
+            return cb.conjunction();
         }
 
         Path<?> path = resolvePath(root, filter.getField());
         Class<?> javaType = path.getJavaType();
 
-        return switch (filter.getMode()) {
-            case DATE_ONLY -> buildDateOnlyPredicate(path, javaType, filter, cb);
-            case DATE_TIME -> buildDateTimePredicate(path, javaType, filter, cb);
-        };
+        // 🔹 Normalisation : on ramène TOUT en LocalDate
+        LocalDate fromDate = null;
+        LocalDate toDate   = null;
+
+        switch (filter.getMode()) {
+            case DATE_ONLY -> {
+                fromDate = filter.getFromDate();
+                toDate   = filter.getToDate();
+            }
+            case DATE_TIME -> {
+                LocalDateTime fromDt = filter.getFromDateTime();
+                LocalDateTime toDt   = filter.getToDateTime();
+                fromDate = (fromDt != null) ? fromDt.toLocalDate() : null;
+                toDate   = (toDt   != null) ? toDt.toLocalDate()   : null;
+            }
+        }
+
+        // Si aucune borne, on n'ajoute rien
+        if (fromDate == null && toDate == null) {
+            return cb.conjunction();
+        }
+
+        // 🔹 Délégué à une seule méthode qui ignore toujours l'heure
+        return buildDateIgnoringTime(path, javaType, fromDate, toDate, cb);
+    }
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Predicate buildDateIgnoringTime(
+            Path<?> path,
+            Class<?> javaType,
+            LocalDate fromDate,
+            LocalDate toDate,
+            CriteriaBuilder cb
+    ) {
+        // Rien à filtrer
+        if (fromDate == null && toDate == null) {
+            return cb.conjunction();
+        }
+
+        // Champ LocalDate : on compare directement les dates
+        if (LocalDate.class.equals(javaType)) {
+
+            Path<LocalDate> p = (Path<LocalDate>) path;
+
+            if (fromDate != null && toDate != null) {
+                return cb.between(p, fromDate, toDate);
+            } else if (fromDate != null) {
+                return cb.greaterThanOrEqualTo(p, fromDate);
+            } else {
+                return cb.lessThanOrEqualTo(p, toDate);
+            }
+        }
+
+        // Champ LocalDateTime : on enveloppe les jours en plages [00:00, 23:59:59.999...]
+        if (LocalDateTime.class.equals(javaType)) {
+
+            Path<LocalDateTime> p = (Path<LocalDateTime>) path;
+
+            LocalDateTime fromDt = (fromDate != null) ? fromDate.atStartOfDay() : null;
+            LocalDateTime toDt   = (toDate   != null) ? toDate.atTime(LocalTime.MAX) : null;
+
+            if (fromDt != null && toDt != null) {
+                return cb.between(p, fromDt, toDt);
+            } else if (fromDt != null) {
+                return cb.greaterThanOrEqualTo(p, fromDt);
+            } else {
+                return cb.lessThanOrEqualTo(p, toDt);
+            }
+        }
+
+        // Type non géré
+        return cb.conjunction();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
